@@ -1,8 +1,7 @@
 package lprdetectionnormalizer
 
 import (
-	"encoding/json"
-	"fmt"
+
 	"strings"
 )
 
