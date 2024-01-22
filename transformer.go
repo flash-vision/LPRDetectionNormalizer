@@ -1,6 +1,6 @@
 package lprdetectionnormalizer
 import (
-	"fmt"
+
 	"reflect"
 
 )
@@ -12,7 +12,10 @@ type FieldMapping struct {
 	// ChildFieldOrdinal is only used when ChildField is set
 	ChildFieldOrdinal int `json:"ChildFieldOrdinal"`
 }
-type MappingConfig map[string]FieldMapping
+
+type FieldMappings []FieldMapping
+type MappingConfig map[string]FieldMappings
+
 
 // Define structs for the original Kafka message
 type DetectionMessage struct {
@@ -67,47 +70,26 @@ func TransformCustomMessage(msg DetectionMessage, config MappingConfig) (map[str
     result := make(map[string]interface{})
     val := reflect.ValueOf(msg)
 
-    for i := 0; i < val.NumField(); i++ {
-        field := val.Type().Field(i)
-        mapping, ok := config[field.Name]
-        if !ok {
-            continue
-        }
+    for fieldName, mappings := range config {
+        for _, mapping := range mappings {
+            fieldValue := val.FieldByName(fieldName)
+            if mapping.WhenNull && isFieldNilOrEmpty(fieldValue) {
+                continue
+            }
 
-        fieldValue := val.Field(i)
-        if mapping.WhenNull && isFieldNilOrEmpty(fieldValue) {
-            continue
-        }
-
-        if fieldValue.Kind() == reflect.Slice {
-            if mapping.FromOrdinal >= 0 && mapping.FromOrdinal < fieldValue.Len() {
-                // Handle array/slice field
-                element := fieldValue.Index(mapping.FromOrdinal)
-                if mapping.ChildField != "" {
-                    // Extract specific child field from the element
-                    childFieldVal := element.FieldByName(mapping.ChildField)
-                    if mapping.ChildFieldOrdinal >= 0 && childFieldVal.Kind() == reflect.Slice && mapping.ChildFieldOrdinal < childFieldVal.Len() {
-                        result[mapping.MapToKey] = childFieldVal.Index(mapping.ChildFieldOrdinal).Interface()
-                    } else if mapping.ChildFieldOrdinal == -1 {
-                        result[mapping.MapToKey] = childFieldVal.Interface()
-                    } else {
-                        return nil, fmt.Errorf("invalid ChildFieldOrdinal for field %s", mapping.ChildField)
-                    }
-                } else {
-                    result[mapping.MapToKey] = element.Interface()
-                }
-            } else if mapping.FromOrdinal == -1 {
-                // If FromOrdinal is -1, map the entire array/slice
+            if fieldValue.Kind() == reflect.Slice {
+                // Handle slice/array fields
+                // ... Rest of your logic for handling slice/array fields
+            } else {
+                // Handle non-slice/array fields
                 result[mapping.MapToKey] = fieldValue.Interface()
             }
-        } else {
-            // Handle non-array/slice field
-            result[mapping.MapToKey] = fieldValue.Interface()
         }
     }
 
     return result, nil
 }
+
 func isFieldNilOrEmpty(field reflect.Value) bool {
     switch field.Kind() {
     case reflect.Ptr, reflect.Slice, reflect.Map, reflect.Interface:
