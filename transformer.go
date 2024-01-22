@@ -1,6 +1,6 @@
 package lprdetectionnormalizer
 import (
-
+    "fmt"
 	"reflect"
 
 )
@@ -15,7 +15,6 @@ type FieldMapping struct {
 
 type FieldMappings []FieldMapping
 type MappingConfig map[string]FieldMappings
-
 
 // Define structs for the original Kafka message
 type DetectionMessage struct {
@@ -67,36 +66,54 @@ type PayloadData struct {
 }
 
 func TransformCustomMessage(msg DetectionMessage, config MappingConfig) (map[string]interface{}, error) {
-    result := make(map[string]interface{})
-    val := reflect.ValueOf(msg)
+	result := make(map[string]interface{})
+	val := reflect.ValueOf(msg)
 
-    for fieldName, mappings := range config {
-        for _, mapping := range mappings {
-            fieldValue := val.FieldByName(fieldName)
-            if mapping.WhenNull && isFieldNilOrEmpty(fieldValue) {
-                continue
-            }
+	for fieldName, mappings := range config {
+		fieldVal := val.FieldByName(fieldName)
+		if !fieldVal.IsValid() {
+			return nil, fmt.Errorf("field %s not found in DetectionMessage", fieldName)
+		}
 
-            if fieldValue.Kind() == reflect.Slice {
-                // Handle slice/array fields
-                // ... Rest of your logic for handling slice/array fields
-            } else {
-                // Handle non-slice/array fields
-                result[mapping.MapToKey] = fieldValue.Interface()
-            }
-        }
-    }
+		for _, mapping := range mappings {
+			if mapping.WhenNull && isFieldNilOrEmpty(fieldVal) {
+				continue
+			}
 
-    return result, nil
+			if fieldVal.Kind() == reflect.Slice && fieldVal.Len() > 0 {
+				if mapping.FromOrdinal >= 0 && mapping.FromOrdinal < fieldVal.Len() {
+					element := fieldVal.Index(mapping.FromOrdinal)
+					if mapping.ChildField != "" {
+						childFieldVal := element.FieldByName(mapping.ChildField)
+						if childFieldVal.IsValid() {
+							if mapping.ChildFieldOrdinal >= 0 && childFieldVal.Kind() == reflect.Slice && mapping.ChildFieldOrdinal < childFieldVal.Len() {
+								result[mapping.MapToKey] = childFieldVal.Index(mapping.ChildFieldOrdinal).Interface()
+							} else if mapping.ChildFieldOrdinal == -1 {
+								result[mapping.MapToKey] = childFieldVal.Interface()
+							}
+						} else {
+							return nil, fmt.Errorf("child field %s not found in %s", mapping.ChildField, fieldName)
+						}
+					} else {
+						result[mapping.MapToKey] = element.Interface()
+					}
+				}
+			} else {
+				result[mapping.MapToKey] = fieldVal.Interface()
+			}
+		}
+	}
+
+	return result, nil
 }
 
 func isFieldNilOrEmpty(field reflect.Value) bool {
-    switch field.Kind() {
-    case reflect.Ptr, reflect.Slice, reflect.Map, reflect.Interface:
-        return field.IsNil()
-    case reflect.String:
-        return field.Len() == 0
-    default:
-        return false
-    }
+	switch field.Kind() {
+	case reflect.Ptr, reflect.Slice, reflect.Map, reflect.Interface:
+		return field.IsNil()
+	case reflect.String:
+		return field.Len() == 0
+	default:
+		return false
+	}
 }
