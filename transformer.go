@@ -81,15 +81,25 @@ func TransformCustomMessage(msg DetectionMessage, config MappingConfig) (map[str
 			}
 
 			if fieldVal.Kind() == reflect.Slice && fieldVal.Len() > 0 {
-				if mapping.FromOrdinal >= 0 && mapping.FromOrdinal < fieldVal.Len() {
-					element := fieldVal.Index(mapping.FromOrdinal)
+				// Handle case when FromOrdinal is -1 (selecting the last element)
+				fromOrdinal := mapping.FromOrdinal
+				if fromOrdinal == -1 {
+					fromOrdinal = fieldVal.Len() - 1
+				}
+
+				if fromOrdinal >= 0 && fromOrdinal < fieldVal.Len() {
+					element := fieldVal.Index(fromOrdinal)
 					if mapping.ChildField != "" {
 						childFieldVal := element.FieldByName(mapping.ChildField)
 						if childFieldVal.IsValid() {
-							if mapping.ChildFieldOrdinal >= 0 && childFieldVal.Kind() == reflect.Slice && mapping.ChildFieldOrdinal < childFieldVal.Len() {
-								result[mapping.MapToKey] = childFieldVal.Index(mapping.ChildFieldOrdinal).Interface()
-							} else if mapping.ChildFieldOrdinal == -1 {
-								result[mapping.MapToKey] = childFieldVal.Interface()
+							childFieldOrdinal := mapping.ChildFieldOrdinal
+							// Handle case when ChildFieldOrdinal is -1 (selecting the last element)
+							if childFieldOrdinal == -1 && childFieldVal.Kind() == reflect.Slice {
+								childFieldOrdinal = childFieldVal.Len() - 1
+							}
+
+							if childFieldOrdinal >= 0 && childFieldOrdinal < childFieldVal.Len() {
+								result[mapping.MapToKey] = childFieldVal.Index(childFieldOrdinal).Interface()
 							}
 						} else {
 							return nil, fmt.Errorf("child field %s not found in %s", mapping.ChildField, fieldName)
